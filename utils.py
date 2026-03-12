@@ -1,3 +1,4 @@
+import os
 import requests
 import json
 from datetime import datetime, timedelta, timezone
@@ -9,7 +10,10 @@ SHA_TZ = timezone(timedelta(hours=8))
 
 
 def get_now_beijing():
-    """获取当前北京时间"""
+    """获取当前北京时间，支持通过环境变量 MOCK_NOW 模拟时间 (格式: YYYY-MM-DD HH:MM:SS)"""
+    mock_now = os.environ.get("MOCK_NOW")
+    if mock_now:
+        return datetime.strptime(mock_now, "%Y-%m-%d %H:%M:%S")
     return datetime.now(SHA_TZ).replace(tzinfo=None)
 
 
@@ -94,7 +98,16 @@ def smart_refresh_logic(jsid, ic, token, accNo):
     # 场景 1: 一天刚开始，没有任何预约
     if not r8450 and not r8452:
         print("[Scenario 1] 没有任何记录，开始分段预约...")
+
+        # 初始起始时间：现在 + 1分钟
         current_start = now + timedelta(minutes=1)
+
+        # 强制起始时间不能早于 08:30
+        eight_thirty = now.replace(hour=8, minute=30, second=0, microsecond=0)
+        if current_start < eight_thirty:
+            print(f"[Scenario 1] 当前时间早于 08:30，将第一段起始时间设为 08:30")
+            current_start = eight_thirty
+
         limit_time = now.replace(hour=Config.LIMIT_HOUR, minute=Config.LIMIT_MINUTE, second=0, microsecond=0)
 
         while current_start < limit_time:
@@ -107,7 +120,7 @@ def smart_refresh_logic(jsid, ic, token, accNo):
                 break
             time.sleep(1)
 
-    # 场景 2: 当前没在约，但未来有（在 Gap 休息中）
+    # 场景 2: 当前没在约，但未来有
     elif not r8452 and r8450:
         print("[Scenario 2] 当前处于 Gap 时间或等待下一次预约开始，跳过。")
 
@@ -125,21 +138,18 @@ def smart_refresh_logic(jsid, ic, token, accNo):
 
             if not uuid or not old_end_dt: continue
 
-            # 如果已经签到 (1093)，则保持现状，不执行刷新
             if status_code == 1093:
-                print(f"[Smart] 预约 [{uuid}] 已签到 (Status: 1093)，保持现状，不执行刷新。")
+                print(f"[Smart] 预约 [{uuid}] 已签到 (Status: 1093)，保持现状。")
                 continue
 
-            print(f"[Smart] 刷新预约: 记录原结束时间 {old_end_dt.strftime('%H:%M:%S')} (北京时间)，正在操作...")
+            print(f"[Smart] 刷新预约: 记录原结束时间 {old_end_dt.strftime('%H:%M:%S')}，正在刷新...")
 
-            # 1. 提前结束旧的
             try:
                 requests.post(end_url, headers=headers, data=json.dumps({"uuid": uuid}))
                 time.sleep(1)
             except:
                 pass
 
-            # 2. 补位预约
             new_start = get_now_beijing() + timedelta(minutes=1)
             reserve_action(jsid, ic, token, accNo, new_start, old_end_dt)
 
