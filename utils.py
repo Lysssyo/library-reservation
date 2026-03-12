@@ -65,6 +65,16 @@ def reserve_action(jsid, ic, token, accNo, start_dt, end_dt):
         return False
 
 
+def parse_lib_time(val):
+    """解析图书馆返回的时间，支持毫秒时间戳和标准字符串"""
+    if not val: return None
+    if isinstance(val, (int, float)):
+        ts = val / 1000 if val > 1e11 else val
+        return datetime.fromtimestamp(ts)
+    else:
+        return datetime.strptime(val, "%Y-%m-%d %H:%M:%S")
+
+
 def smart_refresh_logic(jsid, ic, token, accNo):
     now = datetime.now()
     r8450 = get_reservations(jsid, ic, token, "8450")  # 未来预约
@@ -72,7 +82,7 @@ def smart_refresh_logic(jsid, ic, token, accNo):
 
     # 场景 1: 一天刚开始，没有任何预约
     if not r8450 and not r8452:
-        print("[Scenario 1] 没有任何记录，开始贪婪预约...")
+        print("[Scenario 1] 没有任何记录，开始分段预约...")
         current_start = now + timedelta(minutes=1)
         limit_time = now.replace(hour=Config.LIMIT_HOUR, minute=Config.LIMIT_MINUTE, second=0, microsecond=0)
 
@@ -88,33 +98,32 @@ def smart_refresh_logic(jsid, ic, token, accNo):
 
     # 场景 2: 当前没在约，但未来有（在 Gap 休息中）
     elif not r8452 and r8450:
-        print("[Scenario 2] 当前处于 Gap 休息时间或等待下次预约开始，不执行操作。")
+        print("[Scenario 2] 当前处于 Gap 时间或等待下次预约，跳过。")
 
-    # 场景 3: 查 8452 不为空，刷新当前预约
+    # 场景 3: 刷新进行中预约
     elif r8452:
-        print(f"[Scenario 3] 发现进行中预约，执行断开重连刷新逻辑...")
+        print(f"[Scenario 3] 发现进行中预约，执行刷新逻辑...")
         end_url = f"{Config.BASE_URL}/reserve/endAhaed"
         headers = {"Cookie": f"JSESSIONID={jsid}; ic-cookie={ic}", "token": token,
                    "Content-Type": "application/json;charset=UTF-8"}
 
         for res in r8452:
-            old_end_str = res.get("resvEndTime")
             uuid = res.get("uuid")
-            if not old_end_str or not uuid: continue
+            old_end_dt = parse_lib_time(res.get("resvEndTime"))
+            if not uuid or not old_end_dt: continue
 
-            old_end_dt = datetime.strptime(old_end_str, "%Y-%m-%d %H:%M:%S")
-            print(f"[Smart] 刷新预约: 记录原结束时间 {old_end_str}，正在提前结束并补位...")
+            print(f"[Smart] 刷新预约: 记录原结束时间 {old_end_dt.strftime('%H:%M:%S')}，正在操作...")
 
-            # 1. 提前结束旧的
+            # 1. 提前结束
             try:
                 requests.post(end_url, headers=headers, data=json.dumps({"uuid": uuid}))
                 time.sleep(1)
             except:
                 pass
 
-            # 2. 补位：从现在起约到原来的结束时间
+            # 2. 补位预约
             new_start = datetime.now() + timedelta(minutes=1)
             reserve_action(jsid, ic, token, accNo, new_start, old_end_dt)
 
     else:
-        print("[Unknown State] 未匹配到预设场景。")
+        print("[Unknown State] 无法匹配场景。")
