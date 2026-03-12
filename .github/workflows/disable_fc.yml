@@ -1,0 +1,27 @@
+name: Disable Alibaba FC Trigger
+
+on:
+  workflow_dispatch: # 手动触发
+
+jobs:
+  disable-fc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install alibabacloud_fc20230330==4.6.7 requests
+
+      - name: Run Disable Command
+        env:
+          ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
+          ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
+        run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)/gzhu-lib-reserve
+          python gzhu-lib-reserve/fc_controller.py disable
