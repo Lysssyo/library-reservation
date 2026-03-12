@@ -36,5 +36,5 @@ jobs:
           retry_wait_seconds: 60
           # 核心：注意路径和环境变量
           command: |
-            export PYTHONPATH=$PYTHONPATH:$(pwd)/gzhu-lib-reserve
-            python gzhu-lib-reserve/refresh-all.py
+            export PYTHONPATH=$PYTHONPATH:$(pwd)
+            python refresh-all.py
