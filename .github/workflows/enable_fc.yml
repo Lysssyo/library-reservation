@@ -23,5 +23,5 @@ jobs:
           ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
           ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
         run: |
-          export PYTHONPATH=$PYTHONPATH:$(pwd)/gzhu-lib-reserve
-          python gzhu-lib-reserve/fc_controller.py enable
+          export PYTHONPATH=$PYTHONPATH:$(pwd)
+          python fc_controller.py enable
