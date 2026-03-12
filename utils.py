@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import time
 from config import Config
 
+
 def get_acc_no(jsid, ic):
     url = f"{Config.BASE_URL}/auth/userInfo"
     headers = {
@@ -15,110 +16,105 @@ def get_acc_no(jsid, ic):
         res = requests.get(url, headers=headers).json()
         if res.get("code") == 0:
             return res.get("data", {}).get("accNo")
-    except: pass
+    except:
+        pass
     return None
 
-def cancel_all_logic(jsid, ic, token):
-    """逻辑：查询状态为 8450 的预约并全部删除"""
-    today = datetime.now()
-    begin = (today - timedelta(days=7)).strftime("%Y-%m-%d")
-    end = (today + timedelta(days=7)).strftime("%Y-%m-%d")
-    # 注意：这里使用了您更新后的 needStatus=8450
-    query_url = f"{Config.BASE_URL}/reserve/resvInfo?beginDate={begin}&endDate={end}&needStatus=8450&page=1&pageNum=50&orderKey=gmt_create&orderModel=desc"
-    delete_url = f"{Config.BASE_URL}/reserve/delete"
-    
-    headers = {
-        "Cookie": f"JSESSIONID={jsid}; ic-cookie={ic}",
-        "token": token,
-        "Content-Type": "application/json;charset=UTF-8",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
-    }
 
-    try:
-        res_list = requests.get(query_url, headers=headers).json().get("data", [])
-        if not res_list:
-            print("[Cancel] 没有发现待生效的预约。")
-            return
-        
-        for item in res_list:
-            uuid = item.get("uuid")
-            print(f"[Cancel] 正在取消预约: {uuid}")
-            res = requests.post(delete_url, headers=headers, data=json.dumps({"uuid": uuid})).json()
-            print(f"[Cancel] 响应: {res.get('message')}")
-            time.sleep(0.5)
-    except Exception as e:
-        print(f"[Cancel] 过程出错: {e}")
-
-def end_ahead_logic(jsid, ic, token):
-    """逻辑：查询今日预约并执行提前结束"""
+def get_reservations(jsid, ic, token, status):
+    """查询指定状态的预约记录"""
     date_str = datetime.now().strftime("%Y-%m-%d")
-    # 注意：这里使用了您更新后的 needStatus=8452
-    query_url = f"{Config.BASE_URL}/reserve/resvInfo?beginDate={date_str}&endDate={date_str}&needStatus=8452&page=1&pageNum=10"
-    end_url = f"{Config.BASE_URL}/reserve/endAhaed"
-    
+    url = f"{Config.BASE_URL}/reserve/resvInfo?beginDate={date_str}&endDate={date_str}&needStatus={status}&page=1&pageNum=10"
     headers = {
         "Cookie": f"JSESSIONID={jsid}; ic-cookie={ic}",
         "token": token,
-        "Content-Type": "application/json;charset=UTF-8",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
     }
-
     try:
-        res_list = requests.get(query_url, headers=headers).json().get("data", [])
-        if not res_list:
-            print("[EndAhead] 没有发现进行中的预约。")
-            return
+        data = requests.get(url, headers=headers).json().get("data", [])
+        return data if data else []
+    except:
+        return []
 
-        for item in res_list:
-            uuid = item.get("uuid")
-            print(f"[EndAhead] 尝试提前结束预约: {uuid}")
-            res = requests.post(end_url, headers=headers, data=json.dumps({"uuid": uuid})).json()
-            print(f"[EndAhead] 响应: {res.get('message')}")
-            time.sleep(0.5)
-    except Exception as e:
-        print(f"[EndAhead] 过程出错: {e}")
 
-def batch_reserve_logic(jsid, ic, token, accNo):
-    """逻辑：从现在起按规则分段预约"""
-    reserve_url = f"{Config.BASE_URL}/reserve"
-    now = datetime.now()
-    current_start = now + timedelta(minutes=1)
-    limit_time = now.replace(hour=Config.LIMIT_HOUR, minute=Config.LIMIT_MINUTE, second=0, microsecond=0)
-    
+def reserve_action(jsid, ic, token, accNo, start_dt, end_dt):
+    """执行预约请求，带 1 小时时长校验"""
+    duration_min = (end_dt - start_dt).total_seconds() / 60
+    if duration_min < 60:
+        print(f"[Reserve] 时长仅 {duration_min:.0f} 分钟，不足 1 小时，跳过预约。")
+        return False
+
+    url = f"{Config.BASE_URL}/reserve"
     headers = {
         "Cookie": f"JSESSIONID={jsid}; ic-cookie={ic}",
         "token": token,
         "Content-Type": "application/json;charset=UTF-8",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
     }
+    payload = {
+        "sysKind": 8, "appAccNo": accNo, "memberKind": 1, "resvMember": [accNo],
+        "resvBeginTime": start_dt.strftime("%Y-%m-%d %H:%M:00"),
+        "resvEndTime": end_dt.strftime("%Y-%m-%d %H:%M:00"),
+        "resvDev": [Config.SEAT_ID]
+    }
+    try:
+        res = requests.post(url, headers=headers, data=json.dumps(payload)).json()
+        print(f"[Reserve] {payload['resvBeginTime']} -> {payload['resvEndTime']} | 结果: {res.get('message')}")
+        return res.get("code") == 0
+    except:
+        return False
 
-    print(f"[Reserve] 开始批量预约，截止 {Config.LIMIT_HOUR}:{Config.LIMIT_MINUTE}")
 
-    while current_start < limit_time:
-        # 计算当前段结束时间
-        current_end = current_start + timedelta(hours=Config.MAX_HOURS) - timedelta(minutes=Config.GAP_MINUTES)
-        if current_end >= limit_time: 
-            current_end = limit_time
-        
-        # 校验最低时长（1小时 = 3600秒）
-        if (current_end - current_start).total_seconds() < 3600:
-            print(f"[Reserve] 剩余时间不足1小时，停止预约。")
-            break
+def smart_refresh_logic(jsid, ic, token, accNo):
+    now = datetime.now()
+    r8450 = get_reservations(jsid, ic, token, "8450")  # 未来预约
+    r8452 = get_reservations(jsid, ic, token, "8452")  # 进行中预约
 
-        payload = {
-            "sysKind": 8, "appAccNo": accNo, "memberKind": 1, "resvMember": [accNo],
-            "resvBeginTime": current_start.strftime("%Y-%m-%d %H:%M:00"),
-            "resvEndTime": current_end.strftime("%Y-%m-%d %H:%M:00"),
-            "resvDev": [Config.SEAT_ID]
-        }
-        
-        print(f"[Reserve] 正在预约: {payload['resvBeginTime']} -> {payload['resvEndTime']}")
-        try:
-            res = requests.post(reserve_url, headers=headers, data=json.dumps(payload)).json()
-            print(f"[Reserve] 结果: {res.get('message')}")
-        except Exception as e:
-            print(f"[Reserve] 请求出错: {e}")
-        
-        # 准备下一段：当前结束时间 + GAP
-        current_start = current_end + timedelta(minutes=Config.GAP_MINUTES)
-        time.sleep(1)
+    # 场景 1: 一天刚开始，没有任何预约
+    if not r8450 and not r8452:
+        print("[Scenario 1] 没有任何记录，开始贪婪预约...")
+        current_start = now + timedelta(minutes=1)
+        limit_time = now.replace(hour=Config.LIMIT_HOUR, minute=Config.LIMIT_MINUTE, second=0, microsecond=0)
+
+        while current_start < limit_time:
+            current_end = current_start + timedelta(hours=Config.MAX_HOURS) - timedelta(minutes=Config.GAP_MINUTES)
+            if current_end > limit_time: current_end = limit_time
+
+            if reserve_action(jsid, ic, token, accNo, current_start, current_end):
+                current_start = current_end + timedelta(minutes=Config.GAP_MINUTES)
+            else:
+                break
+            time.sleep(1)
+
+    # 场景 2: 当前没在约，但未来有（在 Gap 休息中）
+    elif not r8452 and r8450:
+        print("[Scenario 2] 当前处于 Gap 休息时间或等待下次预约开始，不执行操作。")
+
+    # 场景 3: 查 8452 不为空，刷新当前预约
+    elif r8452:
+        print(f"[Scenario 3] 发现进行中预约，执行断开重连刷新逻辑...")
+        end_url = f"{Config.BASE_URL}/reserve/endAhaed"
+        headers = {"Cookie": f"JSESSIONID={jsid}; ic-cookie={ic}", "token": token,
+                   "Content-Type": "application/json;charset=UTF-8"}
+
+        for res in r8452:
+            old_end_str = res.get("resvEndTime")
+            uuid = res.get("uuid")
+            if not old_end_str or not uuid: continue
+
+            old_end_dt = datetime.strptime(old_end_str, "%Y-%m-%d %H:%M:%S")
+            print(f"[Smart] 刷新预约: 记录原结束时间 {old_end_str}，正在提前结束并补位...")
+
+            # 1. 提前结束旧的
+            try:
+                requests.post(end_url, headers=headers, data=json.dumps({"uuid": uuid}))
+                time.sleep(1)
+            except:
+                pass
+
+            # 2. 补位：从现在起约到原来的结束时间
+            new_start = datetime.now() + timedelta(minutes=1)
+            reserve_action(jsid, ic, token, accNo, new_start, old_end_dt)
+
+    else:
+        print("[Unknown State] 未匹配到预设场景。")
