@@ -29,7 +29,7 @@ jobs:
         env:
           LIB_USER: ${{ secrets.LIB_USER }}
           LIB_PASS: ${{ secrets.LIB_PASS }}
-          LIB_SEAT_ID: ${{ secrets.LIB_SEAT_ID }}
+          LIB_SEAT_ID: ${{ vars.LIB_SEAT_ID }}
         with:
           timeout_minutes: 15
           max_attempts: 3
