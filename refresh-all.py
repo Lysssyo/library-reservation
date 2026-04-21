@@ -1,4 +1,6 @@
-from login import get_library_credentials
+import sys
+
+from login import LoginFatalError, get_library_credentials
 from utils import get_acc_no, smart_refresh_logic
 from config import Config
 
@@ -7,15 +9,20 @@ def main():
         Config.validate()
     except ValueError as e:
         print(e)
-        return
+        sys.exit(1)
 
     print("=== [开始任务] 执行智能刷新与预约 ===")
     
     # 1. 登录
-    jsid, ic, token = get_library_credentials(Config.USER, Config.PASS)
+    try:
+        jsid, ic, token = get_library_credentials(Config.USER, Config.PASS)
+    except LoginFatalError:
+        print("登录流程发生致命错误，本次任务直接失败结束，等待 GitHub Actions 重试。")
+        sys.exit(1)
+
     if not (jsid and ic and token):
         print("登录失败，流程终止。")
-        return
+        sys.exit(1)
 
     # 2. 获取 ID
     accNo = get_acc_no(jsid, ic)

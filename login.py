@@ -2,6 +2,10 @@ from playwright.sync_api import sync_playwright
 import time
 from config import Config
 
+class LoginFatalError(RuntimeError):
+    """登录流程发生致命错误时抛出，交由入口脚本决定退出策略。"""
+
+
 def get_library_credentials(username, password):
     """
     通过 Playwright 模拟真实用户流程获取凭据
@@ -72,6 +76,6 @@ def get_library_credentials(username, password):
 
         except Exception as e:
             print(f"[Fatal Error] {e}")
-            return None, None, None
+            raise LoginFatalError(str(e)) from e
         finally:
             browser.close()
