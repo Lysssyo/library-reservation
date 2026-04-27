@@ -69,7 +69,7 @@ def get_reservations(jsid, ic, token, status):
         return []
 
 
-def reserve_action(jsid, ic, token, accNo, start_dt, end_dt):
+def reserve_action(jsid, ic, token, accNo, start_dt, end_dt, seat_id):
     """执行预约请求，带 1 小时时长校验"""
     duration_min = (end_dt - start_dt).total_seconds() / 60
     if duration_min < 60:
@@ -87,7 +87,7 @@ def reserve_action(jsid, ic, token, accNo, start_dt, end_dt):
         "sysKind": 8, "appAccNo": accNo, "memberKind": 1, "resvMember": [accNo],
         "resvBeginTime": start_dt.strftime("%Y-%m-%d %H:%M:00"),
         "resvEndTime": end_dt.strftime("%Y-%m-%d %H:%M:00"),
-        "resvDev": [Config.SEAT_ID]
+        "resvDev": [seat_id]
     }
     try:
         res = requests.post(url, headers=headers, data=json.dumps(payload)).json()
@@ -97,7 +97,7 @@ def reserve_action(jsid, ic, token, accNo, start_dt, end_dt):
         return False
 
 
-def smart_refresh_logic(jsid, ic, token, accNo):
+def smart_refresh_logic(jsid, ic, token, accNo, seat_id):
     """
     实现用户定义的三种核心场景逻辑
     """
@@ -115,7 +115,7 @@ def smart_refresh_logic(jsid, ic, token, accNo):
             current_end = current_start + timedelta(hours=Config.MAX_HOURS) - timedelta(minutes=Config.GAP_MINUTES)
             if current_end > limit_time: current_end = limit_time
 
-            if reserve_action(jsid, ic, token, accNo, current_start, current_end):
+            if reserve_action(jsid, ic, token, accNo, current_start, current_end, seat_id):
                 current_start = current_end + timedelta(minutes=Config.GAP_MINUTES)
             else:
                 break
@@ -124,7 +124,7 @@ def smart_refresh_logic(jsid, ic, token, accNo):
     # 场景 2: 当前无预约，但未来有预约。检查是否可以补齐当前到未来最早预约之间的空隙
     elif not r8452 and r8450:
         print("[Scenario 2] 当前无预约但未来有记录，检查补全逻辑...")
-        
+
         # 获取未来所有预约中最早的起始时间
         min_future_start = None
         for res in r8450:
@@ -132,17 +132,17 @@ def smart_refresh_logic(jsid, ic, token, accNo):
             if st:
                 if min_future_start is None or st < min_future_start:
                     min_future_start = st
-        
+
         if min_future_start:
             current_start = get_corrected_start_time(now, "Scenario 2")
             # 补全段的结束时间：未来最早开始时间 - Gap
             current_end = min_future_start - timedelta(minutes=Config.GAP_MINUTES)
-            
+
             # 检查空隙是否大于等于 1 小时
             gap_duration = current_end - current_start
             if gap_duration >= timedelta(hours=1):
                 print(f"[Scenario 2] 补全预约空档 (时长 {gap_duration}): {current_start.strftime('%H:%M')} -> {current_end.strftime('%H:%M')}")
-                reserve_action(jsid, ic, token, accNo, current_start, current_end)
+                reserve_action(jsid, ic, token, accNo, current_start, current_end, seat_id)
             else:
                 print(f"[Scenario 2] 距离未来最早预约 ({min_future_start.strftime('%H:%M')}) 空隙不足 1 小时，保持静默。")
         else:
@@ -175,7 +175,7 @@ def smart_refresh_logic(jsid, ic, token, accNo):
                 pass
 
             new_start = get_corrected_start_time(get_now_beijing(), "Scenario 3")
-            reserve_action(jsid, ic, token, accNo, new_start, old_end_dt)
+            reserve_action(jsid, ic, token, accNo, new_start, old_end_dt, seat_id)
 
     else:
         print("[Unknown State] 无法匹配场景。")

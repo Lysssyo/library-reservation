@@ -1,0 +1,16 @@
+[Unit]
+Description=GZHU Library Reservation Timer
+Requires=gzhu-lib-reserve-task.service
+
+[Timer]
+# 东八区 07:00 = UTC 23:00（前一天）
+OnCalendar=*-*-* 23:00:00
+# 东八区 08:00-21:00 每25分钟 = UTC 00:00-13:00 每25分钟
+OnCalendar=*-*-* 00/1:00:00
+OnCalendar=*-*-* 00/1:25:00
+OnCalendar=*-*-* 00/1:50:00
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

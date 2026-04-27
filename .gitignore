@@ -3,3 +3,13 @@ __pycache__/
 *.pyo
 *.pyd
 
+# 运行时文件，不入库
+state.json
+logs/
+runtime/
+
+# idea 相关
+.idea/
+
+# agent 相关
+.claude

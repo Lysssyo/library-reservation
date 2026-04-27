@@ -1,0 +1,14 @@
+[Unit]
+Description=GZHU Library Reservation API Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/gzhu-lib-reserve
+EnvironmentFile=/etc/gzhu-lib-reserve/app.env
+ExecStart=/opt/gzhu-lib-reserve/venv/bin/python server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

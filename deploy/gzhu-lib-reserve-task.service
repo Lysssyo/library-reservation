@@ -1,0 +1,11 @@
+[Unit]
+Description=GZHU Library Reservation Task
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/gzhu-lib-reserve
+EnvironmentFile=/etc/gzhu-lib-reserve/app.env
+ExecStart=/opt/gzhu-lib-reserve/venv/bin/python run_once.py
+StandardOutput=append:/opt/gzhu-lib-reserve/logs/systemd.log
+StandardError=append:/opt/gzhu-lib-reserve/logs/systemd.log
