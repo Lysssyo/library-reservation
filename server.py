@@ -13,6 +13,20 @@ LOG_DIR = BASE_DIR / "logs"
 app = Flask(__name__)
 
 
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
+
+@app.route("/<path:_path>", methods=["OPTIONS"])
+@app.route("/", methods=["OPTIONS"])
+def options_handler(_path=""):
+    return ("", 204)
+
+
 def load_state():
     with open(STATE_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
